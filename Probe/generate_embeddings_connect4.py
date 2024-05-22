@@ -28,7 +28,7 @@ def return_idx(q_value_list: List) -> Tuple[Optional[int], Optional[List[float]]
     return pos, q_vals
 
 def generate_probe_training_data(num_samples: int, dataset: List, q_list: List, probe_layer: int, 
-                                 config: Config, token_to_idx: Dict, model_load_path : str) -> Tuple[List[torch.Tensor], List[List[float]]]:
+                                 config: Config, token_to_idx: Dict, model_load_path : str, data_path: str) -> Tuple[List[torch.Tensor], List[List[float]]]:
     
     """
     Generates embeddings and corresponding Q-value data for training the probe on a GPT model.
@@ -49,6 +49,8 @@ def generate_probe_training_data(num_samples: int, dataset: List, q_list: List, 
         Mapping from state/action tokens to indices.
     model_load_path : str
         Path to load the Transformer Model
+    data_path: str
+        Path to load preexisting samples from (if it exists)
 
     Returns
     -------
@@ -66,10 +68,19 @@ def generate_probe_training_data(num_samples: int, dataset: List, q_list: List, 
     embeddings = []
     q_values = []
 
+    sampled_data = []
+    try:
+        with open(data_path, 'rb') as f:
+            sampled_data = pickle.load(f)
+    except (FileNotFoundError):
+        pass
     with torch.no_grad():
         for i, (X, _) in enumerate(dataset):
             for j in range(num_samples):
-                idx, q_vals = return_idx(q_list[i])
+                if len(sampled_data) > 0:
+                    idx, q_vals = sampled_data[i * num_samples + j]
+                else:  
+                    idx, q_vals = return_idx(q_list[i])
                 if idx is not None and any(q_val != 0 for q_val in q_vals):
                     X_idx = [token_to_idx[token] for token in X]
                     X_idx = torch.tensor(X_idx, dtype=torch.long).to(device).unsqueeze(0)
@@ -79,7 +90,7 @@ def generate_probe_training_data(num_samples: int, dataset: List, q_list: List, 
 
     return embeddings, q_values
 
-def get_embeddings_qvalues(num_samples: int, data: List, q_data: List, layer: int, config : Config, token_to_idx : Dict, model_load_path : str) -> Tuple[List, List]:
+def get_embeddings_qvalues(num_samples: int, data: List, q_data: List, layer: int, config : Config, token_to_idx : Dict, model_load_path : str, data_path: str) -> Tuple[List, List]:
 
     """
     Retrieves embeddings and Q-values for specified positions and layers.
@@ -100,6 +111,8 @@ def get_embeddings_qvalues(num_samples: int, data: List, q_data: List, layer: in
         Mapping from state/action tokens to indices.
     model_load_path : str
         Path to load the Transformer Model
+    data_path: str
+        Path to load preexisting samples from (if it exists)
 
     Returns
     -------
@@ -110,7 +123,7 @@ def get_embeddings_qvalues(num_samples: int, data: List, q_data: List, layer: in
     embeddings = []
     q_values = []
 
-    curr_embed, curr_qvals = generate_probe_training_data(num_samples, data, q_data, layer, config, token_to_idx, model_load_path)
+    curr_embed, curr_qvals = generate_probe_training_data(num_samples, data, q_data, layer, config, token_to_idx, model_load_path, data_path)
     embeddings += curr_embed
     q_values += curr_qvals
 
